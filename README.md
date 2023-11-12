@@ -7,8 +7,10 @@ Feature encodings for chess deep learning models come in two main categories:
 
 Given that transformer networks have since proven effective models in both NLP and visual tasks, this begs the question whether transformers can make a good encoder.
 Some have naturally thought of this in the context of chess games as sequences, using chess moves as tokens. But in principle, chess is Markovian, so the sequential history of the game should not matter. Instead, it is proposed to tokenize the squares on the board, with positional encoding to designate where it is, and a dictionary of 13 possible tokens for their status (hosting one of 12 pieces or an empty square). It is of course possible to add extra information at the end of the sequence with additional tokens to signify things like castling rights (not implemented here).
+
 ## Implementation
 As a starting point, Andrey Karpathy's miniGPT implementation is used: https://github.com/karpathy/minGPT  
+Data is taken from simulated games between other strong engines, with results stored in a csv file, and game outcomes are used for training.  
 Instead of autoregressive prediction, the output tokens are pooled and a classfier is placed on top with a sigmoid at the end.  
-The model is to predict chances of winning.  
-Data is taken from simulated games between other engines, with results stored in a csv file, and game outcomes are used for training.  
+The model is to predict chances of winning. While early positions might be harder to predict, since the game is still open, later positions should be easier since they less balanced and close to the end.
+
