@@ -6,11 +6,11 @@ Feature encodings for chess deep learning models come in two main categories:
 - Grid Planes Encoding for CNN: this is used in implementations such as Alpha-Zero. A set of 8x8 grids are one-hot encoded with the presence of certain pieces, eg. a grid with ones for positions of white pawns and zeroes elsewhere. Each grid is a plane, or equivalent of a 'channel' in image data. A stack of such planes represents all the information on the board. Due to the grid/channel form it makes a suitable input to a convolutional neural network, as used in Alpha-Zero.  
 
 Given that transformer networks have since proven effective models in both NLP and visual tasks, this begs the question whether transformers can make a good encoder.
-Some have naturally thought of this in the context of chess games as sequences, using chess moves as tokens. But in principle, chess is Markovian, so the sequential history of the game should not matter. Instead, it is proposed to tokenize the squares on the board, with positional encoding to designate where it is, and a dictionary of 13 possible tokens for their status (hosting one of 12 pieces or an empty square). It is of course possible to add extra information at the end of the sequence with additional tokens to signify things like castling rights (not implemented here).
-
+Some have naturally thought of this in the context of chess games as sequences, using chess moves as tokens. But in principle, chess is Markovian, so the sequential history of the game should not matter. Instead, it is proposed to tokenize the squares on the board. 
 ## Implementation
 As a starting point, Andrey Karpathy's miniGPT implementation is used: https://github.com/karpathy/minGPT  
-Data is taken from simulated games between other strong engines, with results stored in a csv file, and game outcomes are used for training.  
+Tokenization is accomplished with positional encoding to designate each square definitively (so context window is 64), and a dictionary of 13 possible tokens for each possible status of the square (hosting one of 12 pieces or an empty square). It is of course possible to add extra information at the end of the sequence with additional tokens to signify things like castling rights (not implemented here).  
+Data is taken from simulated games between other strong engines using python chess package. Positions are stored as FEN strings, and game results are either 0 for loss, 0.5 for draw and 1 for win, stored in csv file.  
 Instead of autoregressive prediction, the output tokens are pooled and a classfier is placed on top with a sigmoid at the end.  
-The model is to predict chances of winning. While early positions might be harder to predict, since the game is still open, later positions should be easier since they less balanced and close to the end.
+The model is to predict chances of winning. While early positions might be harder to predict, since the game is still open, later positions should be easier since they less balanced and close to the end.  
 
