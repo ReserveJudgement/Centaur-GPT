@@ -10,7 +10,10 @@ Some have naturally thought of this in the context of chess games as sequences, 
 ## Implementation
 As a starting point, Andrey Karpathy's miniGPT implementation is used: https://github.com/karpathy/minGPT  
 Tokenization is accomplished with positional encoding to designate each square definitively (so context window is 64), and a dictionary of 13 possible tokens for each possible status of the square (hosting one of 12 pieces or an empty square). It is of course possible to add extra information at the end of the sequence with additional tokens to signify things like castling rights (not implemented here).  
-Data is taken from simulated games between other strong engines using python chess package. Positions are stored as FEN strings, and game results are either 0 for loss, 0.5 for draw and 1 for win, stored in csv file.  
+Data is taken from simulated games between other strong engines using python chess package. Positions are FEN strings, and game results are 0 for loss, 0.5 for draw and 1 for win, stored in csv file.  
 Instead of autoregressive prediction, the output tokens are pooled and a classfier is placed on top with a sigmoid at the end.  
-The model is to predict chances of winning. While early positions might be harder to predict, since the game is still open, later positions should be easier since they less balanced and close to the end.  
+The model objective is to predict chances of winning from a given position. While early positions might be harder to predict, since the game is still open, later positions should be easier since they are less balanced and close to the end.  
 
+## Initial Results
+Accuracy (only win/lose games in test set) is 0.78  
+TODO: evaluate against engine with 1-depth lookahead (ie. no search algorithm) so that only evaluation functions are being compared  
