@@ -142,23 +142,11 @@ class GPT(nn.Module):
         if type_given:
             # translate from model_type to detailed configuration
             config.merge_from_dict({
-                # names follow the huggingface naming conventions
-                # GPT-1
-                'openai-gpt':   dict(n_layer=12, n_head=12, n_embd=768),  # 117M params
-                # GPT-2 configs
-                'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
-                'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
-                'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
-                'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
-                # Gophers
-                'gopher-44m':   dict(n_layer=8, n_head=16, n_embd=512),
-                # ChessGPT
                 'ChessGPTNano':   dict(n_layer=10, n_head=8, n_embd=32),     # 100k
                 'ChessGPTSmall':  dict(n_layer=6, n_head=8, n_embd=64),     # 300k params
                 'ChessGPT':       dict(n_layer=12, n_head=8, n_embd=64),    # 600k params
-                'ChessGPT1':      dict(n_layer=4, n_head=4, n_embd=128),    #
                 'ChessGPT2':      dict(n_layer=4, n_head=8, n_embd=128),    # 800k params
-                'ChessGPTMed':    dict(n_layer=8, n_head=8, n_embd=128),    # 1.6M params
+                'ChessGPTMed':    dict(n_layer=10, n_head=16, n_embd=128),  # 2M params
                 'ChessGPTLarge':  dict(n_layer=12, n_head=8, n_embd=128),   # 2.4M params
                 'ChessGPTLarger': dict(n_layer=6, n_head=8, n_embd=256)
             }[config.model_type])
@@ -266,6 +254,378 @@ class GPT(nn.Module):
 
         #return logits, loss
         return x
+# utility class
+class CfgNode:
+    """ a lightweight configuration class inspired by yacs """
+
+    # TODO: convert to subclass from a dict like in yacs?
+    # TODO: implement freezing to prevent shooting of own foot
+    # TODO: additional existence/override checks when reading/writing params?
+
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def __str__(self):
+        return self._str_helper(0)
+
+    def _str_helper(self, indent):
+        """ need to have a helper to support nested indentation for pretty printing """
+        parts = []
+        for k, v in self.__dict__.items():
+            if isinstance(v, CfgNode):
+                parts.append("%s:\n" % k)
+                parts.append(v._str_helper(indent + 1))
+            else:
+                parts.append("%s: %s\n" % (k, v))
+        parts = [' ' * (indent * 4) + p for p in parts]
+        return "".join(parts)
+
+    def to_dict(self):
+        """ return a dict representation of the config """
+        return {k: v.to_dict() if isinstance(v, CfgNode) else v for k, v in self.__dict__.items()}
+
+    def merge_from_dict(self, d):
+        self.__dict__.update(d)
+
+    def merge_from_args(self, args):
+        """
+        update the configuration from a list of strings that is expected
+        to come from the command line, i.e. sys.argv[1:].
+        The arguments are expected to be in the form of `--arg=value`, and
+        the arg can use . to denote nested sub-attributes. Example:
+        --model.n_layer=10 --trainer.batch_size=32
+        """
+        for arg in args:
+
+            keyval = arg.split('=')
+            assert len(keyval) == 2, "expecting each override arg to be of form --arg=value, got %s" % arg
+            key, val = keyval  # unpack
+
+            # first translate val into a python object
+            try:
+                val = literal_eval(val)
+                """
+                need some explanation here.
+                - if val is simply a string, literal_eval will throw a ValueError
+                - if val represents a thing (like an 3, 3.14, [1,2,3], False, None, etc.) it will get created
+                """
+            except ValueError:
+                pass
+
+            # find the appropriate object to insert the attribute into
+            assert key[:2] == '--'
+            key = key[2:]  # strip the '--'
+            keys = key.split('.')
+            obj = self
+            for k in keys[:-1]:
+                obj = getattr(obj, k)
+            leaf_key = keys[-1]
+
+            # ensure that this attribute exists
+            assert hasattr(obj, leaf_key), f"{key} is not an attribute that exists in the config"
+
+            # overwrite the attribute
+            print("command line overwriting config attribute %s with %s" % (key, val))
+            setattr(obj, leaf_key, val)
+
+
+class WinTrainer:
+    @staticmethod
+    def get_default_config(batch=256, lr=3e-4):
+        C = CfgNode()
+        # device to train on
+        C.device = 'auto'
+        # dataloder parameters
+        C.num_workers = 0
+        # optimizer parameters
+        C.max_iters = None
+        C.batch_size = batch
+        C.learning_rate = lr
+        C.betas = (0.9, 0.95)  # original (0.9, 0.95)
+        C.weight_decay = 1e-5  # 0.1 only applied on matmul weights
+        C.grad_norm_clip = 1.0
+        return C
+
+    def __init__(self, config, model, trainset, testset=None, type='binaryclass'):
+        self.config = config
+        self.model = model
+        self.optimizer = None
+        self.trainset = trainset
+        self.testset = testset
+        self.callbacks = defaultdict(list)
+        self.loss_table = {}
+        self.loss_table["time"] = []
+        self.loss_table["loss"] = []
+        self.type = type
+
+        # determine the device we'll train on
+        if config.device == 'auto':
+            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        else:
+            self.device = config.device
+        self.model = self.model.to(self.device)
+        print("running on device", self.device)
+
+        # variables that will be assigned to trainer class later for logging etc
+        self.iter_num = 0
+        self.iter_time = 0.0
+        self.iter_dt = 0.0
+
+    def add_callback(self, onevent: str, callback):
+        self.callbacks[onevent].append(callback)
+
+    def set_callback(self, onevent: str, callback):
+        self.callbacks[onevent] = [callback]
+
+    def trigger_callbacks(self, onevent: str):
+        for callback in self.callbacks.get(onevent, []):
+            callback(self)
+
+    def run(self, classifier=None, backbone=None, final="last_token"):
+        print("training")
+        model, config = self.model, self.config
+        model.train()
+
+        # configure output head for model
+
+        if self.type == "binaryclass":
+            if classifier is None:
+                classifier = nn.Sequential(nn.Linear(model.config.n_embd, model.config.n_embd),
+                                         nn.BatchNorm1d(model.config.n_embd),
+                                         nn.LeakyReLU(inplace=True),
+                                         nn.Linear(model.config.n_embd, model.config.n_embd),
+                                         nn.BatchNorm1d(model.config.n_embd),
+                                         nn.LeakyReLU(inplace=True),
+                                         nn.Linear(model.config.n_embd, model.config.n_embd),
+                                         nn.BatchNorm1d(model.config.n_embd),
+                                         nn.LeakyReLU(inplace=True),
+                                         nn.Linear(model.config.n_embd, 1)).to(self.device)
+            classifier.train().to(self.device)
+            loss_fn = nn.BCEWithLogitsLoss()
+        
+
+        # setup the optimizer
+        self.optimizer = model.configure_optimizers(config)
+        if classifier is not None:
+            self.clfoptim = torch.optim.AdamW(classifier.parameters(), lr=self.config.learning_rate  # )
+                                              , betas=self.config.betas, weight_decay=self.config.weight_decay)
+
+        # setup the dataloader
+        train_loader = DataLoader(
+            self.trainset,
+            sampler=torch.utils.data.RandomSampler(self.trainset, replacement=True),  # num_samples=int(1e10)),
+            shuffle=False,
+            # pin_memory=True,
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+        )
+
+        if self.testset is not None:
+            test_loader = DataLoader(self.testset, shuffle=False, batch_size=config.batch_size,
+                                     num_workers=config.num_workers)
+
+        self.iter_num = 1
+        data_iter = iter(train_loader)
+        while True:
+            #print("iter: ", self.iter_num)
+            # fetch the next batch (x, y) and re-init iterator if needed
+            try:
+                batch = next(data_iter)
+            except StopIteration:
+                data_iter = iter(train_loader)
+                batch = next(data_iter)
+            batch = [t.to(self.device) for t in batch]
+            x, y = batch
+
+            # forward the model
+            if backbone is not None:
+                backbone.eval()
+                with torch.no_grad():
+                    x = backbone(x)
+            if final == "last_token":
+                encoding = model(x)[:, -1, :]  # version that takes last token output
+            elif final == "mean_tokens":
+                encoding = torch.mean(model(x), dim=1)  # version that takes mean of outputs
+            elif final == "concat_tokens":
+                encoding = torch.flatten(model(x), start_dim=1, end_dim=2)  # version that concatenates outputs
+
+            # prediction
+            if self.type == "binaryclass":
+                #predict = torch.sigmoid(classifier(encoding)).squeeze()
+                predict = classifier(encoding).squeeze()
+                self.loss = loss_fn(predict, y.float())
+            
+            ### save losses
+            if self.iter_num % 100 == 0:
+                self.loss_table["loss"].append(self.loss)
+                self.loss_table["time"].append(self.iter_num)
+                print(f"iter: {self.iter_num},  loss: {self.loss}")
+                #for name, param in model.named_parameters():
+                #    print(name, param.grad.abs().sum())
+
+            # backprop and update the parameters
+            self.optimizer.zero_grad(set_to_none=True)
+            if classifier is not None:
+                self.clfoptim.zero_grad(set_to_none=True)
+            self.loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
+            # torch.nn.utils.clip_grad_norm_(classifier.parameters(), config.grad_norm_clip)
+            if classifier is not None:
+                self.clfoptim.step()
+            self.optimizer.step()
+
+            self.trigger_callbacks('on_batch_end')
+            self.iter_num += 1
+
+            # test accuracy during training
+            if self.iter_num % 2000 == 0 and self.testset is not None:
+                print("intermediate evaluation")
+                model.eval()
+                classifier.eval()
+                accuracy = 0
+                with torch.no_grad():
+                    for x, y in test_loader:
+                        if backbone is not None:
+                            backbone.eval()
+                            with torch.no_grad():
+                                x = backbone(x)
+                        if final == "mean_tokens":
+                            encoding = torch.mean(model(x), dim=1)
+                        elif final == "concat_tokens":
+                            encoding = torch.flatten(model(x), start_dim=1, end_dim=2)
+                        elif final == "last_token":
+                            encoding = model(x)[:, -1, :]
+                        # make prediction using classifier
+                        if self.type == "binaryclass":
+                            proba = torch.sigmoid(classifier(encoding))
+                            predict = proba.round().squeeze().to(self.device)
+                            if torch.all(predict == 0):
+                                print("all zero prediction")
+                            elif torch.all(predict == 1):
+                                print("all positive prediction")
+                            y = y.round().squeeze().to(self.device)
+                            accuracy += torch.eq(predict, y).sum().item()
+
+                accuracy /= len(self.testset)
+                print(f"accuracy: ", accuracy)
+                model.train()
+                classifier.train()
+
+            # save checkpoint
+            if self.iter_num % 100 == 0:
+                state_dict = model.state_dict()
+                torch.save(state_dict, f"drive/MyDrive/EncoderCheckpoint.pt")
+                state_dict = classifier.state_dict()
+                torch.save(state_dict, f"drive/MyDrive/ClfCheckpoint.pt")
+                
+            # termination conditions
+            if config.max_iters is not None and self.iter_num >= config.max_iters:
+                break
+
+        return model, classifier, self.loss_table
+
+
+def board_encoder(position):
+    board = chess.Board(position)
+    bits = []
+    for i in range(64):
+        p = board.piece_at(i)
+        if p is None:
+            bits.append(0)
+        elif board.turn == chess.WHITE:
+            if p.symbol() == "P":
+                bits.append(1)
+            elif p.symbol() == "R":
+                bits.append(2)
+            elif p.symbol() == "N":
+                bits.append(3)
+            elif p.symbol() == "B":
+                bits.append(4)
+            elif p.symbol() == "Q":
+                bits.append(5)
+            elif p.symbol() == "K":
+                bits.append(6)
+            elif p.symbol() == "p":
+                bits.append(7)
+            elif p.symbol() == "r":
+                bits.append(8)
+            elif p.symbol() == "n":
+                bits.append(9)
+            elif p.symbol() == "b":
+                bits.append(10)
+            elif p.symbol() == "q":
+                bits.append(11)
+            elif p.symbol() == "k":
+                bits.append(12)
+        elif board.turn == chess.BLACK:
+            if p.symbol() == "P":
+                bits.append(7)
+            elif p.symbol() == "R":
+                bits.append(8)
+            elif p.symbol() == "N":
+                bits.append(9)
+            elif p.symbol() == "B":
+                bits.append(10)
+            elif p.symbol() == "Q":
+                bits.append(11)
+            elif p.symbol() == "K":
+                bits.append(12)
+            elif p.symbol() == "p":
+                bits.append(1)
+            elif p.symbol() == "r":
+                bits.append(2)
+            elif p.symbol() == "n":
+                bits.append(3)
+            elif p.symbol() == "b":
+                bits.append(4)
+            elif p.symbol() == "q":
+                bits.append(5)
+            elif p.symbol() == "k":
+                bits.append(6)
+    if board.turn == chess.WHITE:
+        bits.append(13)
+        other = chess.BLACK
+    else:
+        bits.append(14)
+        other = chess.WHITE
+        # does player have castling rights
+    if board.has_castling_rights(board.turn):
+        bits.append(15)
+    else:
+        bits.append(16)
+        # does opponent have castling rights
+    if board.has_castling_rights(other):
+        bits.append(15)
+    else:
+        bits.append(16)
+        # is player in check
+    if board.is_check():
+        bits.append(17)
+    else:
+        bits.append(18)
+    #bits.append(19)
+    return bits
+
+class WinPred(Dataset):
+    def __init__(self, filepath):
+        self.device = ("cuda" if torch.cuda.is_available() else "cpu")
+        self.data = pd.read_csv(f"{filepath}.csv")
+        print(f"set has {len(self.data.index)} data points")
+
+    def __len__(self):
+        return len(self.data.index)
+
+    def __getitem__(self, item):
+        pos = self.data['position'].iloc[item]
+        board_idx = board_encoder(pos)
+        x = torch.tensor(board_idx + [19], dtype=torch.long, device=self.device)
+        if self.data["result"] == "win":
+            y = 1
+        elif self.data["result"] == "draw":
+            y = 0.5
+        elif self.data["result"] == "lose":
+            y = 0
+        return x, y
 
 
 def init_chessGPT(t):
@@ -297,9 +657,9 @@ if __name__ == '__main__':
     modelfile = ""
     traindata = WinPred(trainfile)
     testdata = WinPred(testfile)
-    model = init_chessGPT("ChessGPT")
-    trainer = WinTrainer.get_default_config(batch=256)
-    trainer.max_iters = 20000
+    model = init_chessGPT("ChessGPTMed")
+    trainer = WinTrainer.get_default_config(batch=512)
+    trainer.max_iters = 200000
     model, clf, losses = WinTrainer(trainer, model, traindata, testdata).run()
     show_losses(losses)
     # save
