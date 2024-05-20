@@ -142,13 +142,7 @@ class GPT(nn.Module):
         if type_given:
             # translate from model_type to detailed configuration
             config.merge_from_dict({
-                'ChessGPTNano':   dict(n_layer=10, n_head=8, n_embd=32),     # 100k
-                'ChessGPTSmall':  dict(n_layer=6, n_head=8, n_embd=64),     # 300k params
-                'ChessGPT':       dict(n_layer=12, n_head=8, n_embd=64),    # 600k params
-                'ChessGPT2':      dict(n_layer=4, n_head=8, n_embd=128),    # 800k params
                 'ChessGPTMed':    dict(n_layer=10, n_head=16, n_embd=128),  # 2M params
-                'ChessGPTLarge':  dict(n_layer=12, n_head=8, n_embd=128),   # 2.4M params
-                'ChessGPTLarger': dict(n_layer=6, n_head=8, n_embd=256)
             }[config.model_type])
 
         self.transformer = nn.ModuleDict(dict(
@@ -632,8 +626,8 @@ def init_chessGPT(t):
     # create model instance
     model_config = GPT.get_default_config()
     model_config.model_type = t
-    model_config.vocab_size = 15
-    model_config.block_size = 65
+    model_config.vocab_size = 20
+    model_config.block_size = 69
     model = GPT(model_config)
     return model
 
