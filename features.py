@@ -192,7 +192,6 @@ class move_features():
         self.uci = move
         self.move = chess.Move.from_uci(move)
         self.color = self.board.turn
-        #self.color = self.board.piece_at(self.move.from_square).color
 
     def extract(self):
         # extract features to do with engines' move recommendations
@@ -262,4 +261,15 @@ class move_features():
         else:
             features.append(0)
         return features
+
+
+def make_features(file, player1, player2):
+    df = pd.read_csv(f"{file}.csv")
+    #df = df.sample(n=10000)
+    print("data points: ", len(df.index))
+    print("extracting features")
+    data = df.progress_apply(lambda z: [z["position"]] + board_features(z['position']).extract() + [1 if (z[player1] > z[player2]) else 0], axis=1).to_list()
+    data = pd.DataFrame([{z: w[z] for z in range(len(w))} for w in data])
+    data.to_csv(f"C:/chess/{file}_features.csv", index=False)
+    return
 
