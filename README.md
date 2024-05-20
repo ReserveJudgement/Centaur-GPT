@@ -1,4 +1,4 @@
-# Chess-GPT
+# Centaur-GPT
 ## Introduction
 This is an experimental encoder for chess using a GPT style transformer model.
 Existing feature encodings for SoTA chess deep learning models come in two main categories:  
@@ -8,18 +8,16 @@ Existing feature encodings for SoTA chess deep learning models come in two main 
 Given that transformer networks have since proven effective models in both NLP and visual tasks, this begs the question whether transformers could constitute a third paradigm for chess encoding.
 Some have naturally thought of this in the context of chess games as sequences, using chess moves as tokens. But in principle, chess is Markovian, so the sequential history of the game should not matter. Instead, it is proposed to tokenize the squares on the board for any given position. 
 
-## Architecture
+## Model Architecture
 ![image](https://github.com/ReserveJudgement/Chess-GPT/assets/150562945/101224f5-a510-453f-857a-e4b7068b14d4)
 
 The model receives a fixed-size set of tokens ("context window") as input, and tokens are drawn from a closed vocabulary. So we need to define the context window and vocabulary in order to tokenize.  
-Vocabulary consists of 13 possible tokens for each possible status of a square (it can host one of 12 pieces or be an empty square). Positional encoding is added to designate location of each square on the board (so context window is 64). Extra tokens appended at the end of the sequence to signify color being played, castling rights of each side and whether the board is in check (even though this could be inferred by the model, it doesn't hurt to add).  
-For model architecture, experimentation includes: number of layers: 10, self-attention heads: 16, and embedding size for each token: 128.
-Training data is generated from games between chess engines using python chess package. Positions are recorded as FEN strings, and game results are scored as 0 for loss, 0.5 for draw and 1 for win. While this is sufficient for the training objective, other datapoints are stored in csv file for possible future use (plies, moves, engine scores etc.).  
+Vocabulary consists of 13 possible tokens for each possible status of a square (it can host one of 12 pieces or be an empty square). Positional encoding is added to designate location of each square on the board. Extra tokens appended at the end of the sequence to signify color being played, castling rights of each side and whether the board is in check (even though this could be inferred by the model, it doesn't hurt to add).  
 Last token is an auxiliary "CLS" token used to aggregate information from the other tokens, and a classfier is placed on top of it with a sigmoid at the end.
 Training is vanilla binary classification with cross-entropy loss.
-The model objective is to predict chances of winning from a given position. While early positions might be harder to predict, since the game is still open, later positions should be easier since they are less balanced and close to the end.
+Model architecture: number of layers: 10, self-attention heads: 16, and embedding size for each token: 128. Final classification is with 3-layer FC network.
 Andrey Karpathy's miniGPT implementation is used as a base: https://github.com/karpathy/minGPT  
 
-## Initial Results
-Initial model has accuracy (only win/lose games in test set): 0.78  
-TODO: evaluate the model by using it as a chess engine itself (without search function, just evaluate one step ahead) playing against a proper chess engine. Model gives a score to the positions resulting from each legal move and the argmax is chosen. Adversary engine should also be set to 1-depth lookahead only (ie. no search algorithm) for fair comparison.  
+## Game Generation
+Training data is generated from games between chess engines using python chess package. Positions are recorded as FEN strings, and game results are scored as 0 for loss, 0.5 for draw and 1 for win. While this is sufficient for the training objective, other datapoints are stored in csv file for possible future use (plies, moves, engine scores etc.).  
+
