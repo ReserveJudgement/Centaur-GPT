@@ -1,14 +1,22 @@
 # Centaur-GPT
 ## Introduction
-This is an experimental encoder for chess using a GPT style transformer model.
-Existing feature encodings for SoTA chess deep learning models come in two main categories:  
-- Binary Vector for FC Network: the input has the form of a single long vector designed for feeding into a fully connected network. Eg. "bitboard" representation encodes each square on the board with a one-hot vector of 12 bits, each bit representing a possible piece occupying the square, and all zeroes represents an empty square. 64 such vectors are concatenated to make a 768 length binary vector. Extra information can be added at the end, eg. a bit to signify whether there are castling rights. Stockfish, which has a shallow 4-layer FC network for it's evaluation function, uses a more complex overparameterized representation with over 8k bits. But it is still a binary vector representation for a FC network.
-- Grid Planes Encoding for CNN: this is used in implementations such as Alpha-Zero. A set of 8x8 grids are one-hot encoded with the presence of certain pieces, eg. a grid with ones for positions of white pawns and zeroes elsewhere. Each grid is a plane, or equivalent of a 'channel' in image data. A stack of such planes represents all the information on the board. Due to the grid/channel form it makes a suitable input to a convolutional neural network, as used in Alpha-Zero.  
+This repository contains code, models and data for the paper ....
 
-Given that transformer networks have since proven effective models in both NLP and visual tasks, this begs the question whether transformers could constitute a third paradigm for chess encoding.
-Some have naturally thought of this in the context of chess games as sequences, using chess moves as tokens. But in principle, chess is Markovian, so the sequential history of the game should not matter. Instead, it is proposed to tokenize the squares on the board for any given position. 
 
-## Model Architecture
+## Game Generation
+Training data is generated from games between chess engines using python chess package. 
+The networks used for Maia and Leela can be found in the models folder.
+Engines for running them can be downloaded from https://lczero.org/
+Stockfish engines (in the paper we used version 11) can be downloaded from https://drive.google.com/drive/folders/1nzrHOyZMFm4LATjF5ToRttCU0rHXGkXI
+Start states for the games can be found in the opening-positions folder.
+The code for generating games can be found in the code folder: Generate-Games.py.
+Positions are recorded as FEN strings, and game results from those positions are scored as 0 for loss, 0.5 for draw and 1 for win. 
+While this is sufficient for the training objective, other datapoints are stored in csv file (ply count, recommended moves etc.). 
+
+
+## Training
+Given a file of training data, a transformer model can be trained using the Chess-GPT-trainer.py file in the code folder.
+
 ![image](https://github.com/ReserveJudgement/Chess-GPT/assets/150562945/101224f5-a510-453f-857a-e4b7068b14d4)
 
 The model receives a fixed-size set of tokens ("context window") as input, and tokens are drawn from a closed vocabulary. So we need to define the context window and vocabulary in order to tokenize.  
@@ -18,6 +26,10 @@ Training is vanilla binary classification with cross-entropy loss.
 Model architecture: number of layers: 10, self-attention heads: 16, and embedding size for each token: 128. Final classification is with 3-layer FC network.
 Andrey Karpathy's miniGPT implementation is used as a base: https://github.com/karpathy/minGPT  
 
-## Game Generation
-Training data is generated from games between chess engines using python chess package. Positions are recorded as FEN strings, and game results are scored as 0 for loss, 0.5 for draw and 1 for win. While this is sufficient for the training objective, other datapoints are stored in csv file for possible future use (plies, moves, engine scores etc.).  
+## Model with Hand-Crafted Features
+To train a FC network that takes hand-crafted features, the features first need to be extracted.
+This is done with the code in the features.py file.
+After that the train-fc.py file trains a model.
 
+## Evaluation
+Given a trained model and the base chess engines, the team can be evaluated using the Evaluate.py file.
