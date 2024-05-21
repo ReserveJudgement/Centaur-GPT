@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import CentaurGPT-trainer
 
 
 # a global dictionary of engines and their paths
@@ -214,7 +215,7 @@ class CentaurModel:
             self.model.eval().to("cuda")
         if fc is None:
             self.fc = False
-            self.model = CentaurGPT.init_chessGPT("ChessGPT")
+            self.model = CentaurGPT-trainer.init_model("CentaurGPT")
             dims = self.model.config.n_embd
             loaded_dict = torch.load(f'{modelpathname}Encoder.pt')
             self.model.load_state_dict(loaded_dict)
@@ -264,7 +265,7 @@ class CentaurModel:
 class PolicyIterate:
     def __init__(self, modelname, device, p=1.0):
         self.device = device
-        self.model = CentaurGPT.init_chessGPT("ChessGPT").to(self.device)
+        self.model = CentaurGPT-trainer.init_model("CentaurGPT").to(self.device)
         dims = self.model.config.n_embd
         self.clf = cls(dims).to(self.device)
         model_dict = torch.load(f"{modelname}Encoder.pt", map_location=torch.device(self.device))
@@ -444,10 +445,9 @@ class RandomChoice():
 
 
 class GreedyRollouts():
-    def __init__(self, depth=1, samples=1, rollouts=1):
+    def __init__(self, depth=1, rollouts=1):
         #super().__init__(team, adv)
         self.depth = depth
-        self.samples = samples
         self.rollouts = rollouts
 
     def classify(self, position, recs, engines, advname, team):
@@ -469,10 +469,8 @@ class GreedyRollouts():
                     board.push(adversary.play(board, chess.engine.Limit(depth=self.depth), game=object()).move)
                     done, result = self.check_end(board, color)
                     if not done:
-                        samp = []
-                        for _ in range(self.samples):
-                            samp.append(engine.play(board, chess.engine.Limit(depth=1), game=object()).move.uci())
-                        board.push_uci(max(set(samp), key=samp.count))
+                        move = engine.play(board, chess.engine.Limit(depth=1), game=object()).move.uci()
+                        board.push_uci(move)
                         done, result = self.check_end(board, color)
                 if result is None:
                     print("error getting result")
@@ -483,21 +481,14 @@ class GreedyRollouts():
             results.append(score/rounds)
             adversary.quit()
             engine.quit()
-        r = np.random.choice([0, 1], p=[0.5, 0.5])
         if results.count(max(results)) == len(results):
             idx = random.choice([0, 1])
             move = recs[idx]
             member = team[idx]
         else:
-            if r == 0:
-                idx = results.index(max(results))
-            else:
-                idx = results.index(min(results))
+            idx = results.index(max(results))
             move = recs[idx]
             member = team[idx]
-        #idx = 1 #random.choice([0, 1])
-        #move = recs[idx]
-        #member = team[idx]
         return move, member, results
 
     def check_end(self, board, color):
