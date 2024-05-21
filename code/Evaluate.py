@@ -554,8 +554,8 @@ class Teacher():
 if __name__ == '__main__':
     df = pd.read_csv("train-opening-positions.csv")
     openings = df['positions'].tolist()
-    team = ["maia1900", "leela10b2500"]
-    adv = "stockfish11"
+    team = ["maia", "leela"]
+    adv = "stockfish"
     gamerun = TeamPlay(team, adv)
     model = "CentaurEncoder"
     manager = CentaurModel(model)
