@@ -548,7 +548,7 @@ if __name__ == '__main__':
     team = ["maia", "leela"]
     adv = "stockfish"
     gamerun = TeamPlay(team, adv)
-    model = "CentaurEncoder"
+    model = "ManagerTransformer"
     manager = CentaurModel(model)
     _, _, _, _, record = gamerun.evaluate_team(manager, starts, colors="both", games=1, seconds=1, depth1=1, depth2=1)
     df = pd.DataFrame(record)
