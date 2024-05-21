@@ -1,10 +1,5 @@
 """
-Full definition of a GPT Language Model, all of it in this single file.
-References:
-1) the official GPT-2 TensorFlow implementation released by OpenAI:
-https://github.com/openai/gpt-2/blob/master/src/model.py
-2) huggingface/transformers PyTorch implementation:
-https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
+Implementation of transformer based on https://github.com/karpathy/minGPT
 """
 
 import copy
@@ -142,7 +137,7 @@ class GPT(nn.Module):
         if type_given:
             # translate from model_type to detailed configuration
             config.merge_from_dict({
-                'ChessGPTMed':    dict(n_layer=10, n_head=16, n_embd=128),  # 2M params
+                'CentaurGPT':    dict(n_layer=10, n_head=16, n_embd=128),  # 2M params
             }[config.model_type])
 
         self.transformer = nn.ModuleDict(dict(
@@ -251,10 +246,6 @@ class GPT(nn.Module):
 # utility class
 class CfgNode:
     """ a lightweight configuration class inspired by yacs """
-
-    # TODO: convert to subclass from a dict like in yacs?
-    # TODO: implement freezing to prevent shooting of own foot
-    # TODO: additional existence/override checks when reading/writing params?
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
