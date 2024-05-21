@@ -1,4 +1,16 @@
+import random
+import sys
+import chess
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
 
+
+# a global dictionary of engines and their paths
+players = {"stockfish": r".stockfish/stockfish_14_x64_popcnt",
+           "leela": r"./leela/lc0_lnx_cpu.exe",
+           "maia": r"./maia/lc0_lnx_cpu.exe"}
 
 
 class TeamPlay:
@@ -6,7 +18,7 @@ class TeamPlay:
         self.team = team
         self.adv = adv
 
-    def evaluate_team(self, model, starts, colors="both", games=1, seconds=1, depth1=None, depth2=1):
+    def evaluate_team(self, model, starts, colors="both", games=1, seconds=1, depth1=1, depth2=1):
         # function to run a tournament between a team of engines and an adversary, using a classifier
         # self.engines is a dictionary of player names and their spun-up engines, self.adversayr is adv engine.
         # classifier is a classifier function. It is sent model info which may be any object, and the game circumstances.
@@ -155,7 +167,6 @@ class TeamPlay:
                     for player in self.team:
                         record[f"{player}_move"].extend(members[f"{player}_move"])
                         record[f"{player}_eval"].extend(evals[f"{player}_eval"])
-                        #record[f"{player}_conf"].extend(conf[f"{player}_conf"])
                     record["result"].extend([result for _ in range(len(board))])
                 else:
                     timeout += 1
@@ -174,9 +185,7 @@ class TeamPlay:
                 # cycle back and play from next opening position
             # do another round of plays
         # end tournament and return results
-        for name, engine in self.engines.items():
-            engine.quit()
-        self.adversary.quit()
+        model.quit()
         print(f"team won {player1wins} times")
         print(f"adversary won {player2wins} times")
         print(f"they drew {draws} times")
@@ -194,9 +203,8 @@ class TeamPlay:
         return player1wins, player2wins, draws, position_scores, record
 
 
-
 class CentaurModel:
-    def __init__(self, modelpathname, t, fc=None):
+    def __init__(self, modelpathname, fc=None):
         if fc is not None:
             import models
             self.fc = True
@@ -206,7 +214,7 @@ class CentaurModel:
             self.model.eval().to("cuda")
         if fc is None:
             self.fc = False
-            self.model = CentaurGPT.init_chessGPT(t)
+            self.model = CentaurGPT.init_chessGPT("ChessGPT")
             dims = self.model.config.n_embd
             loaded_dict = torch.load(f'{modelpathname}Encoder.pt')
             self.model.load_state_dict(loaded_dict)
@@ -249,4 +257,309 @@ class CentaurModel:
         member = team[idx]
         return move, member, scores
 
+    def quit(self):
+        return
 
+
+class PolicyIterate:
+    def __init__(self, modelname, device, p=1.0):
+        self.device = device
+        self.model = CentaurGPT.init_chessGPT("ChessGPT").to(self.device)
+        dims = self.model.config.n_embd
+        self.clf = cls(dims).to(self.device)
+        model_dict = torch.load(f"{modelname}Encoder.pt", map_location=torch.device(self.device))
+        self.model.load_state_dict(model_dict)
+        model_dict = torch.load(f"{modelname}Clf.pt", map_location=torch.device(self.device))
+        self.clf.load_state_dict(model_dict)
+        self.model.eval()
+        self.clf.eval()
+        self.p = p
+
+    def classify(self, position, recs, eggs, advname, team):
+        if position.turn == chess.WHITE:
+            color = chess.WHITE
+        else:
+            color = chess.BLACK
+        results = []
+        for i, player in enumerate(team):
+            adversary = chess.engine.SimpleEngine.popen_uci(players[advname])
+            engine1 = chess.engine.SimpleEngine.popen_uci(players[team[0]])
+            engine2 = chess.engine.SimpleEngine.popen_uci(players[team[1]])
+            board = chess.Board(position.fen())
+            board.push_uci(recs[i])
+            done, result = self.check_end(board, color)
+            while not done:
+                board.push(adversary.play(board, chess.engine.Limit(depth=1), game=object()).move)
+                done, result = self.check_end(board, color)
+                if not done:
+                    bidx = CentaurGPT.board_encoder(board.fen())
+                    x = torch.tensor(bidx + [19], dtype=torch.long, device=self.device).unsqueeze(0)
+                    encoding = self.model(x)[:, -1, :]
+                    proba = torch.sigmoid(self.clf(encoding)).to(self.device)
+                    predict = int(proba.round().squeeze().item())
+                    if predict == 1:
+                        mv = engine1.play(board, chess.engine.Limit(depth=1), game=object()).move.uci()
+                    elif predict == 0:
+                        mv = engine2.play(board, chess.engine.Limit(depth=1), game=object()).move.uci()
+                    board.push_uci(mv)
+                    done, result = self.check_end(board, color)
+                if result is None:
+                    print("error getting result")
+                    result = 0
+            results.append(result)
+            adversary.quit()
+            engine1.quit()
+            engine2.quit()
+        if results.count(max(results)) == len(results):
+            idx = random.choice(range(len(recs)))
+            move = recs[idx]
+            member = team[idx]
+        else:
+            r = np.random.choice([0, 1], p=[self.p, 1 - self.p])
+            if r == 0:
+                idx = results.index(max(results))
+            elif r == 1:
+                idx = results.index(min(results))
+            move = recs[idx]
+            member = team[idx]
+        return move, member, results
+
+    def check_end(self, board, color):
+        terminate = False
+        reward = None
+        other = chess.BLACK if color == chess.WHITE else chess.WHITE
+        if board.outcome(claim_draw=False) is not None:
+            terminate = True
+            if board.outcome().winner == color:
+                reward = 1
+            elif board.outcome().winner == other:
+                reward = 0
+            else:
+                reward = 0.5
+        return terminate, reward
+
+    def quit(self):
+        return
+
+
+class FCIterate:
+    def __init__(self, modelname, dims, device, p=1.0):
+        self.device = device
+        import models
+        self.model = models.py_model(dims).to(self.device)
+        model_dict = torch.load(f"{modelname}.pt", map_location=torch.device(self.device))
+        self.model.load_state_dict(model_dict)
+        self.model.eval()
+        self.p = p
+
+    def classify(self, position, recs, eggs, advname, team):
+        if position.turn == chess.WHITE:
+            color = chess.WHITE
+        else:
+            color = chess.BLACK
+        results = []
+        for i, player in enumerate(team):
+            adversary = chess.engine.SimpleEngine.popen_uci(players[advname])
+            engine1 = chess.engine.SimpleEngine.popen_uci(players[team[0]])
+            engine2 = chess.engine.SimpleEngine.popen_uci(players[team[1]])
+            board = chess.Board(position.fen())
+            board.push_uci(recs[i])
+            done, result = self.check_end(board, color)
+            while not done:
+                board.push(adversary.play(board, chess.engine.Limit(depth=1), game=object()).move)
+                done, result = self.check_end(board, color)
+                if not done:
+                    bidx = board_features(board.fen()).extract_reduced()
+                    x = torch.tensor(bidx, dtype=torch.float, device=self.device).unsqueeze(0)
+                    encoding = self.model(x).squeeze()
+                    proba = torch.sigmoid(encoding).to(self.device)
+                    predict = int(proba.round().squeeze().item())
+                    if predict == 1:
+                        mv = engine1.play(board, chess.engine.Limit(depth=1), game=object()).move.uci()
+                    elif predict == 0:
+                        mv = engine2.play(board, chess.engine.Limit(depth=1), game=object()).move.uci()
+                    board.push_uci(mv)
+                    done, result = self.check_end(board, color)
+            if result is None:
+                print("error getting result")
+                result = 0
+            results.append(result)
+            adversary.quit()
+            engine1.quit()
+            engine2.quit()
+        if results.count(max(results)) == len(results):
+            idx = random.choice(range(len(recs)))
+            move = recs[idx]
+            member = team[idx]
+        else:
+            r = np.random.choice([0, 1], p=[self.p, 1 - self.p])
+            if r == 0:
+                idx = results.index(max(results))
+            elif r == 1:
+                idx = results.index(min(results))
+            move = recs[idx]
+            member = team[idx]
+        return move, member, results
+
+    def check_end(self, board, color):
+        terminate = False
+        reward = None
+        other = chess.BLACK if color == chess.WHITE else chess.WHITE
+        if board.outcome(claim_draw=False) is not None:
+            terminate = True
+            if board.outcome().winner == color:
+                reward = 1
+            elif board.outcome().winner == other:
+                reward = 0
+            else:
+                reward = 0.5
+        return terminate, reward
+
+    def quit(self):
+        return
+
+
+class RandomChoice():
+    def __init__(self, team, p):
+        self.team = team
+        self.p = p
+
+    def classify(self, board, recs, engines, adv, team):
+        scores = []
+        if board.turn is True or board.turn == chess.WHITE:
+            color = chess.WHITE
+        else:
+            color = chess.BLACK
+        for player in self.team:
+            if color == chess.WHITE:
+                evaluation = engines[player].analyse(board, chess.engine.Limit(depth=1))["score"].white().wdl(model="lichess").expectation()
+            else:
+                evaluation = engines[player].analyse(board, chess.engine.Limit(depth=1))["score"].black().wdl(model="lichess").expectation()
+            scores.append(evaluation)
+        member = np.random.choice(self.team, p=[self.p, 1 - self.p])
+        r = self.team.index(member)
+        #r = random.randint(0, len(recs)-1)
+        move = recs[r]
+        return move, member, scores
+
+
+class GreedyRollouts():
+    def __init__(self, depth=1, samples=1, rollouts=1):
+        #super().__init__(team, adv)
+        self.depth = depth
+        self.samples = samples
+        self.rollouts = rollouts
+
+    def classify(self, position, recs, engines, advname, team):
+        if position.turn is True or position.turn == chess.WHITE:
+            color = chess.WHITE
+        else:
+            color = chess.BLACK
+        results = []
+        for i, player in enumerate(team):
+            adversary = chess.engine.SimpleEngine.popen_uci(players[advname])
+            engine = chess.engine.SimpleEngine.popen_uci(players[player])
+            score = 0
+            rounds = 0
+            for j in range(self.rollouts):
+                board = chess.Board(position.fen())
+                board.push_uci(recs[i])
+                done, result = self.check_end(board, color)
+                while not done:
+                    board.push(adversary.play(board, chess.engine.Limit(depth=self.depth), game=object()).move)
+                    done, result = self.check_end(board, color)
+                    if not done:
+                        samp = []
+                        for _ in range(self.samples):
+                            samp.append(engine.play(board, chess.engine.Limit(depth=1), game=object()).move.uci())
+                        board.push_uci(max(set(samp), key=samp.count))
+                        done, result = self.check_end(board, color)
+                if result is None:
+                    print("error getting result")
+                    result = 0
+                else:
+                    rounds += 1
+                score += result
+            results.append(score/rounds)
+            adversary.quit()
+            engine.quit()
+        r = np.random.choice([0, 1], p=[0.5, 0.5])
+        if results.count(max(results)) == len(results):
+            idx = random.choice([0, 1])
+            move = recs[idx]
+            member = team[idx]
+        else:
+            if r == 0:
+                idx = results.index(max(results))
+            else:
+                idx = results.index(min(results))
+            move = recs[idx]
+            member = team[idx]
+        #idx = 1 #random.choice([0, 1])
+        #move = recs[idx]
+        #member = team[idx]
+        return move, member, results
+
+    def check_end(self, board, color):
+        terminate = False
+        reward = None
+        other = chess.BLACK if color == chess.WHITE else chess.WHITE
+        if board.is_game_over(claim_draw=False):
+            terminate = True
+            if board.outcome().winner == color:
+                reward = 1
+            elif board.outcome().winner == other:
+                reward = 0
+            else:
+                reward = 0.5
+        return terminate, reward
+
+
+class Teacher():
+    def __init__(self, modelname, depth):
+        self.scorer = chess.engine.SimpleEngine.popen_uci(players[modelname])
+        self.depth = depth
+
+    def classify(self, position, recs, engines, adv, team):
+        # method receives teacher to serve as a classifier
+        # model_info has name of teacher engine, depth
+        board = chess.Board(position.fen())
+        scores = []
+        if board.turn == chess.WHITE:
+            color = chess.WHITE
+        else:
+            color = chess.BLACK
+        for i, move in enumerate(recs):
+            board.push_uci(move)
+            if color == chess.WHITE:
+                evaluation = self.scorer.analyse(board, chess.engine.Limit(time=60, depth=self.depth), game=object())["score"].white().wdl(model="sf14").expectation()
+            else:
+                evaluation = self.scorer.analyse(board, chess.engine.Limit(time=60, depth=self.depth), game=object())["score"].black().wdl(model="sf14").expectation()
+            scores.append(evaluation)
+            board.pop()
+        if scores.count(max(scores)) == len(scores):
+            m = random.randint(0, len(recs) - 1)
+            move = recs[m]
+            member = "random"
+        else:
+            m = scores.index(max(scores))
+            move = recs[m]
+            member = team[m]
+        return move, member, scores
+
+    def quit(self):
+        self.scorer.quit()
+        return
+
+if __name__ == '__main__':
+    df = pd.read_csv("train-opening-positions.csv")
+    openings = df['positions'].tolist()
+    team = ["maia1900", "leela10b2500"]
+    adv = "stockfish11"
+    gamerun = TeamPlay(team, adv)
+    model = "CentaurEncoder"
+    manager = CentaurModel(model)
+    _, _, _, _, record = gamerun.evaluate_team(manager, starts, colors="both", games=1, seconds=1, depth1=1, depth2=1)
+    df = pd.DataFrame(record)
+    df.to_csv("./EvaluationGames.csv", index=False)
+    
