@@ -19,7 +19,7 @@ Previous Stockfish engines (the paper used version 11 as adversary) can be downl
 
 
 ## Generating Games
-Training data is generated from games between chess engines using the python chess package. 
+Training data is generated from games between chess engines using the python chess package [https://python-chess.readthedocs.io/en/latest/]. 
 Start states for the games can be found in the "opening-positions" folder.
 The code for generating games can be found in the "code" folder: Generate-Games.py.
 Running games requires specifying team members and adversary, as stored in a global dictionary with paths to the respective engines.
@@ -44,17 +44,6 @@ When generating games using the models, both need to be used.
 The best trained model can be found in the "models" folder, with the name "ManagerTransformer".
 
 
-### Model architecture details
-![image](https://github.com/ReserveJudgement/Chess-GPT/assets/150562945/101224f5-a510-453f-857a-e4b7068b14d4)
-
-The model receives a fixed-size set of tokens ("context window") as input, and tokens are drawn from a closed vocabulary. So we need to define the context window and vocabulary in order to tokenize.  
-Vocabulary consists of 13 possible tokens for each possible status of a square (it can host one of 12 pieces or be an empty square). Positional encoding is added to designate location of each square on the board. Extra tokens appended at the end of the sequence to signify color being played, castling rights of each side and whether the board is in check (even though this could be inferred by the model, it doesn't hurt to add).  
-Last token is an auxiliary "CLS" token used to aggregate information from the other tokens, and a classfier is placed on top of it with a sigmoid at the end.
-Training is vanilla binary classification with cross-entropy loss.
-Model architecture: number of layers: 10, self-attention heads: 16, and embedding size for each token: 128. Final classification is with 3-layer FC network.
-Andrey Karpathy's miniGPT implementation is used as a base: https://github.com/karpathy/minGPT  
-
-
 ## Hand-Crafted Features
 To train a FC network that takes hand-crafted features, the features first need to be extracted.
 This is done with the code in the features.py file.
@@ -66,4 +55,9 @@ The model has 20 hidden layers of width 256 each.
 
 ## Explainability
 Explainability analysis can be done using the helper functions in the Explainability.py file.
-
+Functions include:
+- getting attentions scores from model over a dataset
+- querying the attention scores for the variables of interest (pieces vs empty squares, attacked pieces vs not-attacked, move comparisons)
+- heatmap visualization of attentions over board
+- calculate non-parametric Aw effect size
+- feature importance attribution using captum [https://captum.ai/]
