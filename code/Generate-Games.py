@@ -6,10 +6,11 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import CentaurGPT-trainer
+import Features
 
 
 # a global dictionary of engines and their paths
-players = {"stockfish": r".stockfish/stockfish_14_x64_popcnt",
+players = {"stockfish": r"./stockfish.exe",
            "leela": r"./leela/lc0_lnx_cpu.exe",
            "maia": r"./maia/lc0_lnx_cpu.exe"}
 
@@ -238,13 +239,13 @@ class CentaurModel:
         scores = []
         with torch.no_grad():
             if self.fc is False:
-                pos = chessGPT.board_encoder(position.fen())
+                pos = CentaurGPT-trainer.board_encoder(position.fen())
                 x = torch.tensor(pos, dtype=torch.long).unsqueeze(0).to("cuda")
                 encoding = self.model(x)
                 proba = torch.sigmoid(self.clf(encoding[:, -1, :]))
                 scores = [proba.item(), 1 - proba.item()]
             elif self.fc is True:
-                x = features.board_features(position.fen()).extract_reduced()
+                x = Features.board_features(position.fen()).extract_reduced()
                 x = torch.tensor(x, dtype=torch.float).unsqueeze(0).to("cuda")
                 proba = torch.sigmoid(self.model(x).squeeze())
                 scores = [proba.item(), 1 - proba.item()]
@@ -293,7 +294,7 @@ class PolicyIterate:
                 board.push(adversary.play(board, chess.engine.Limit(depth=1), game=object()).move)
                 done, result = self.check_end(board, color)
                 if not done:
-                    bidx = CentaurGPT.board_encoder(board.fen())
+                    bidx = CentaurGPT-trainer.board_encoder(board.fen())
                     x = torch.tensor(bidx + [19], dtype=torch.long, device=self.device).unsqueeze(0)
                     encoding = self.model(x)[:, -1, :]
                     proba = torch.sigmoid(self.clf(encoding)).to(self.device)
@@ -370,7 +371,7 @@ class FCIterate:
                 board.push(adversary.play(board, chess.engine.Limit(depth=1), game=object()).move)
                 done, result = self.check_end(board, color)
                 if not done:
-                    bidx = board_features(board.fen()).extract_reduced()
+                    bidx = Features.board_features(board.fen()).extract()
                     x = torch.tensor(bidx, dtype=torch.float, device=self.device).unsqueeze(0)
                     encoding = self.model(x).squeeze()
                     proba = torch.sigmoid(encoding).to(self.device)
@@ -552,5 +553,5 @@ if __name__ == '__main__':
     manager = CentaurModel(model)
     _, _, _, _, record = gamerun.evaluate_team(manager, starts, colors="both", games=1, seconds=1, depth1=1, depth2=1)
     df = pd.DataFrame(record)
-    df.to_csv("./EvaluationGames.csv", index=False)
+    df.to_csv("./TrainingGames.csv", index=False)
     
