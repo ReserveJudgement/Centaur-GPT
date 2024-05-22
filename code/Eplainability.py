@@ -26,6 +26,7 @@ def make_cls(dims):
                                nn.Linear(dims, 1)).to("cuda")
     return classifier
 
+
 def get_embeddings(filename, modelname):
     # load model
     data = pd.read_csv(f"{filename}.csv")
@@ -253,7 +254,7 @@ def visualize_attention(filename, player1, player2):
     return
 
 
-def Aw(col1, col2, player2="leela10b2500"):
+def Aw(col1, col2):
     n1 = len(col1.index)
     n2 = len(col2.index)
     c = 0
@@ -262,7 +263,7 @@ def Aw(col1, col2, player2="leela10b2500"):
         e = len(col2[p == col2].index)
         c += g + (0.5 * e)
     ES = c/(n1*n2)
-    #print("Aw effect size: ", ES)
+    print("Aw effect size: ", ES)
     return ES
 
 
