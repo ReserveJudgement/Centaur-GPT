@@ -626,7 +626,7 @@ if __name__ == '__main__':
     player1 = ""
     player2 = ""
     traindata = RelAdvantage(trainfile, player1, player2)
-    testdata = RelAdvantage(testfile, player1, player2)
+    #testdata = RelAdvantage(testfile, player1, player2)
     model = init_model("CentaurGPT")
     trainer = WinTrainer.get_default_config(batch=512)
     trainer.max_iters = 200000
