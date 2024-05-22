@@ -270,6 +270,15 @@ def make_features(file, player1, player2):
     print("extracting features")
     data = df.progress_apply(lambda z: [z["position"]] + board_features(z['position']).extract() + [1 if (z[player1] > z[player2]) else 0], axis=1).to_list()
     data = pd.DataFrame([{z: w[z] for z in range(len(w))} for w in data])
-    data.to_csv(f"C:/chess/{file}_features.csv", index=False)
+    data.rename(columns={"0": "position", "1": "color", "2": "ply", "3": "num_pieces", "4": "num_pieces_opponent",
+                       "5": "material_points", "6": "material_points_opponent",
+                       "7": "pawn_islands", "8": "pawn_islands_opponent",
+                       "9": "defended", "10": "defended_opponent", 
+                       "11": "concentration", "12": "concentration_opponent",
+                       "13": "legal_moves", "14": "legal_moves_opponent",
+                       "15": "attacks", "16": "attacks_opponent",
+                       "17": "attacks_nearking", "18": "attacks_nearking_opponent",
+                       "19": "king_freedom", "20": "king_freedom_opponent", "21": "eval"}, inplace=True)
+    data.to_csv(f"{file}_features.csv", index=False)
     return
 
