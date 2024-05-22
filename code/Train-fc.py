@@ -49,19 +49,13 @@ class py_model(nn.Module):
     def forward(self, x):
         x = x
         for i in range(len(self.layers)):
-            #print("layer: ", i)
             x = self.layers[i](x)
-            #if i == (len(self.layers) - 2):
-            #    rep = x
-        #x = torch.sigmoid(x)
-        #x = torch.softmax(x, dim=1)
         return x
 
 
 def py_train(model, data, objective, epochs=100):
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     model.train().to(device=device)
-    #data = py_data(x, y)
     loader = DataLoader(data, batch_size=1024)
     if objective == "binary":
         loss_fn = torch.nn.BCEWithLogitsLoss()
