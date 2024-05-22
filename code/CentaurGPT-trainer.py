@@ -234,15 +234,9 @@ class GPT(nn.Module):
             # collect attention scores for block
             self.att_scores.append(block.att_scores)
         x = self.transformer.ln_f(x)
-        #logits = self.lm_head(x)
-
-        # if we are given some desired targets also calculate the loss
-        #loss = None
-        #if targets is not None:
-        #    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-
-        #return logits, loss
         return x
+
+
 # utility class
 class CfgNode:
     """ a lightweight configuration class inspired by yacs """
@@ -366,7 +360,7 @@ class WinTrainer:
         for callback in self.callbacks.get(onevent, []):
             callback(self)
 
-    def run(self, classifier=None, backbone=None, final="last_token"):
+    def run(self, classifier=None, final="last_token"):
         print("training")
         model, config = self.model, self.config
         model.train()
@@ -412,7 +406,6 @@ class WinTrainer:
         self.iter_num = 1
         data_iter = iter(train_loader)
         while True:
-            #print("iter: ", self.iter_num)
             # fetch the next batch (x, y) and re-init iterator if needed
             try:
                 batch = next(data_iter)
@@ -423,10 +416,6 @@ class WinTrainer:
             x, y = batch
 
             # forward the model
-            if backbone is not None:
-                backbone.eval()
-                with torch.no_grad():
-                    x = backbone(x)
             if final == "last_token":
                 encoding = model(x)[:, -1, :]  # version that takes last token output
             elif final == "mean_tokens":
@@ -436,7 +425,6 @@ class WinTrainer:
 
             # prediction
             if self.type == "binaryclass":
-                #predict = torch.sigmoid(classifier(encoding)).squeeze()
                 predict = classifier(encoding).squeeze()
                 self.loss = loss_fn(predict, y.float())
             
@@ -454,7 +442,6 @@ class WinTrainer:
                 self.clfoptim.zero_grad(set_to_none=True)
             self.loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
-            # torch.nn.utils.clip_grad_norm_(classifier.parameters(), config.grad_norm_clip)
             if classifier is not None:
                 self.clfoptim.step()
             self.optimizer.step()
@@ -470,10 +457,6 @@ class WinTrainer:
                 accuracy = 0
                 with torch.no_grad():
                     for x, y in test_loader:
-                        if backbone is not None:
-                            backbone.eval()
-                            with torch.no_grad():
-                                x = backbone(x)
                         if final == "mean_tokens":
                             encoding = torch.mean(model(x), dim=1)
                         elif final == "concat_tokens":
@@ -499,9 +482,9 @@ class WinTrainer:
             # save checkpoint
             if self.iter_num % 100 == 0:
                 state_dict = model.state_dict()
-                torch.save(state_dict, f"drive/MyDrive/EncoderCheckpoint.pt")
+                torch.save(state_dict, f"./EncoderCheckpoint.pt")
                 state_dict = classifier.state_dict()
-                torch.save(state_dict, f"drive/MyDrive/ClfCheckpoint.pt")
+                torch.save(state_dict, f"./ClfCheckpoint.pt")
                 
             # termination conditions
             if config.max_iters is not None and self.iter_num >= config.max_iters:
@@ -591,10 +574,14 @@ def board_encoder(position):
     #bits.append(19)
     return bits
 
-class WinPred(Dataset):
-    def __init__(self, filepath):
+
+class RelAdvantage(Dataset):
+    def __init__(self, filename, player1, player2):
+        self.player1 = player1
+        self.player2 = player2
         self.device = ("cuda" if torch.cuda.is_available() else "cpu")
-        self.data = pd.read_csv(f"{filepath}.csv")
+        self.data = pd.read_csv(f"./{filename}.csv")
+        self.data = self.data[self.data[f'{player1}_eval'] != self.data[f'{player2}_eval']]
         print(f"set has {len(self.data.index)} data points")
 
     def __len__(self):
@@ -603,17 +590,13 @@ class WinPred(Dataset):
     def __getitem__(self, item):
         pos = self.data['position'].iloc[item]
         board_idx = board_encoder(pos)
+        
         x = torch.tensor(board_idx + [19], dtype=torch.long, device=self.device)
-        if self.data["result"] == "win":
-            y = 1
-        elif self.data["result"] == "draw":
-            y = 0.5
-        elif self.data["result"] == "lose":
-            y = 0
+        y = 1 if self.data[f'{self.player1}_eval'].iloc[item] > self.data[f'{self.player2}_eval'].iloc[item] else 0
         return x, y
 
 
-def init_chessGPT(t):
+def init_model(t):
     # create model instance
     model_config = GPT.get_default_config()
     model_config.model_type = t
@@ -637,19 +620,21 @@ def show_losses(dict):
 
 
 if __name__ == '__main__':
-    trainfile = ""
-    testfile = ""
-    modelfile = ""
-    traindata = WinPred(trainfile)
-    testdata = WinPred(testfile)
-    model = init_chessGPT("ChessGPTMed")
+    trainfile = "" # path to csv file
+    testfile = "" # optional, less relevant for RL
+    modelname = ""
+    player1 = ""
+    player2 = ""
+    traindata = RelAdvantage(trainfile, player1, player2)
+    testdata = RelAdvantage(testfile, player1, player2)
+    model = init_model("CentaurGPT")
     trainer = WinTrainer.get_default_config(batch=512)
     trainer.max_iters = 200000
-    model, clf, losses = WinTrainer(trainer, model, traindata, testdata).run()
+    model, clf, losses = WinTrainer(trainer, model, traindata).run()
     show_losses(losses)
     # save
     state_dict = model.state_dict()
-    torch.save(state_dict, f"{modelfile}Encoder.pt")
+    torch.save(state_dict, f"{modelname}Encoder.pt")
     state_dict = clf.state_dict()
-    torch.save(state_dict, f"{modelfile}Classifier.pt")
+    torch.save(state_dict, f"{modelname}Clf.pt")
   
