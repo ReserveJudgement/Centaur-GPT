@@ -49,14 +49,16 @@ To train a FC network that takes hand-crafted features, the features first need 
 This is done with the code in the features.py file.
 Extracted features are saved in a csv file, with the positions as FEN strings, a column for each feature and the evaluations preserved in the last column.
 Given features, the train-fc.py file trains a model.
-A trained model can be found in the "models" folder with the name "FC...".
+A trained model can be found in the "models" folder with the name "Manager-FC".
 The model has 20 hidden layers of width 256 each.
 
+## Evaluation
+To evaluate a trained manager model, generate games using the test-opening-positions.csv as start states, and using the CentaurModel class for the manager object.
 
 ## Explainability
 Explainability analysis can be done using the helper functions in the Explainability.py file.
 Functions include:
-- getting attentions scores from model over a dataset
+- getting attention scores from model over a dataset
 - querying the attention scores for the variables of interest (pieces vs empty squares, attacked pieces vs not-attacked, move comparisons)
 - heatmap visualization of attentions over board
 - calculate non-parametric Aw effect size
