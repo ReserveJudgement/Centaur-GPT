@@ -46,9 +46,9 @@ The best trained model can be found in the "models" folder, with the name "Manag
 
 ## Hand-Crafted Features
 To train a FC network that takes hand-crafted features, the features first need to be extracted.
-This is done with the code in the features.py file.
+This is done with the code in the Features.py file.
 Extracted features are saved in a csv file, with the positions as FEN strings, a column for each feature and the evaluations preserved in the last column.
-Given features, the train-fc.py file trains a model.
+Given features, the Train-fc.py file trains a model.
 A trained model can be found in the "models" folder with the name "Manager-FC".
 The model has 20 hidden layers of width 256 each.
 
