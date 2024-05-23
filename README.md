@@ -54,6 +54,7 @@ The model has 20 hidden layers of width 256 each.
 
 ## Evaluation
 To evaluate a trained manager model, generate games using the test-opening-positions.csv as start states, and using the CentaurModel class for the manager object.
+Records of games generated to evaluate the transformer and FC models from the "models" folder, can be found in the "evaluations" folder.
 
 ## Explainability
 Explainability analysis can be done using the helper functions in the Explainability.py file.
