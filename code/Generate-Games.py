@@ -242,16 +242,16 @@ class CentaurModel:
                 pos = CentaurGPT-trainer.board_encoder(position.fen())
                 x = torch.tensor(pos, dtype=torch.long).unsqueeze(0).to("cuda")
                 encoding = self.model(x)
-                proba = torch.sigmoid(self.clf(encoding[:, -1, :]))
-                scores = [proba.item(), 1 - proba.item()]
+                proba = torch.round(torch.sigmoid(self.clf(encoding[:, -1, :]))).squeeze().item()
+                scores = [proba, 1 - proba]
             elif self.fc is True:
                 x = Features.board_features(position.fen()).extract_reduced()
                 x = torch.tensor(x, dtype=torch.float).unsqueeze(0).to("cuda")
-                proba = torch.sigmoid(self.model(x).squeeze())
-                scores = [proba.item(), 1 - proba.item()]
-        if scores[0] > scores[1]:
+                proba = torch.round(torch.sigmoid(self.model(x).squeeze())).item()
+                scores = [proba, 1 - proba]
+        if proba > 0.5:
             idx = 0
-        elif scores[1] > scores[0]:
+        elif proba < 0.5:
             idx = 1
         else:
             idx = random.choice([0, 1])
