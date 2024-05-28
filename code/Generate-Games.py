@@ -240,14 +240,14 @@ class CentaurModel:
         with torch.no_grad():
             if self.fc is False:
                 pos = CentaurGPT-trainer.board_encoder(position.fen())
-                x = torch.tensor(pos, dtype=torch.long).unsqueeze(0).to("cuda")
+                x = torch.tensor(pos + [19], dtype=torch.long).unsqueeze(0).to("cuda")
                 encoding = self.model(x)
-                proba = torch.round(torch.sigmoid(self.clf(encoding[:, -1, :]))).squeeze().item()
+                proba = torch.sigmoid(self.clf(encoding[:, -1, :])).squeeze().item()
                 scores = [proba, 1 - proba]
             elif self.fc is True:
                 x = Features.board_features(position.fen()).extract_reduced()
                 x = torch.tensor(x, dtype=torch.float).unsqueeze(0).to("cuda")
-                proba = torch.round(torch.sigmoid(self.model(x).squeeze())).item()
+                proba = torch.sigmoid(self.model(x).squeeze()).item()
                 scores = [proba, 1 - proba]
         if proba > 0.5:
             idx = 0
