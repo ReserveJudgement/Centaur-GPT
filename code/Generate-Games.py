@@ -445,11 +445,12 @@ class RandomChoice():
         return move, member, scores
 
 
-class GreedyRollouts():
-    def __init__(self, depth=1, rollouts=1):
+class Oracle():
+    def __init__(self, depth=1, rollouts=1, bestplayeridx):
         #super().__init__(team, adv)
         self.depth = depth
         self.rollouts = rollouts
+        self.best = bestplayeridx
 
     def classify(self, position, recs, engines, advname, team):
         if position.turn is True or position.turn == chess.WHITE:
@@ -457,9 +458,9 @@ class GreedyRollouts():
         else:
             color = chess.BLACK
         results = []
-        for i, player in enumerate(team):
-            adversary = chess.engine.SimpleEngine.popen_uci(players[advname])
-            engine = chess.engine.SimpleEngine.popen_uci(players[player])
+        adversary = chess.engine.SimpleEngine.popen_uci(players[advname])
+        engine = chess.engine.SimpleEngine.popen_uci(players[self.best])
+        for i, player in enumerate(team):    
             score = 0
             rounds = 0
             for j in range(self.rollouts):
@@ -480,8 +481,8 @@ class GreedyRollouts():
                     rounds += 1
                 score += result
             results.append(score/rounds)
-            adversary.quit()
-            engine.quit()
+        adversary.quit()
+        engine.quit()
         if results.count(max(results)) == len(results):
             idx = random.choice([0, 1])
             move = recs[idx]
@@ -507,7 +508,7 @@ class GreedyRollouts():
         return terminate, reward
 
 
-class Teacher():
+class Expert():
     def __init__(self, modelname, depth):
         self.scorer = chess.engine.SimpleEngine.popen_uci(players[modelname])
         self.depth = depth
