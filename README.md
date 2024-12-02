@@ -42,7 +42,7 @@ Classes of manager for the virtual centaur team:
 Given a file of training data, a transformer model can be trained using the CentaurGPT-trainer.py file in the "code" folder.
 The board position is encoded using 64 tokens to represent the status of each square on the board, and an additional set of tokens to represent castling rights, whether there is check and a classification token:
 
-![image](https://github.com/user-attachments/assets/e0064286-9f08-4106-a462-96b5e0cf72dc)
+![image](https://github.com/user-attachments/assets/56cf1751-ab03-4940-bd93-7ec971416282)
 
 Training data is converted into a torch dataset using RelAdvantage class.
 The trainer stores the trained transformer encoder and the final classifier layer as separate models, one with the "Encoder" suffix and the other with the "Clf" suffix.
