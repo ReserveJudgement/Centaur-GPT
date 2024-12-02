@@ -31,7 +31,7 @@ Output is a csv file. Positions are recorded as FEN strings, and evaluations of 
 ## Manager types
 Classes of manager for the virtual centaur team:
 - The "CentaurModel" class loads a torch model, either transformer or fully-connected, and uses it to make decisions at each position.
-- The "PolicyIterate" and "FCIterate" classes also load a torch model (transformer and fully-connected respectively), but they score positions by playing out each recommendation of the base players and then rolling out the rest of the game using the model. These classes are good for reinforcement learning using the policy iteration algorithm.
+- The "PolicyIterate" and "FCIterate" classes also load a torch model (transformer and fully-connected respectively), but they score positions by playing out each recommendation of the base players and then rolling out the rest of the game, using the model. These classes are good for reinforcement learning using the policy iteration algorithm (see illustration at head of file).
 - The "Oracle" class scores the recommendations without using a model, by rolling out games from recommendations, using a specified base player alone for continuation.
   This is for comparison to an upper baseline, since this type of rollout at each move is too computationally intensive for actual play.
 - The "RandomChoice" class runs a random mixture policy between the base players. By default p=0.5, but it can be adjusted. Setting p=0 or p=1 can be used to run the baselines of each team member playing alone.
@@ -65,9 +65,13 @@ Explainability analysis can be done using the helper functions in the Explainabi
 Functions include:
 - getting attention scores from model over a dataset
 - querying the attention scores for the variables of interest (pieces vs empty squares, attacked pieces vs not-attacked, move comparisons)
-- heatmap visualization of attentions over board
+- heatmap visualization of attention scores in the transformer model over board positions
 - calculate non-parametric Aw effect size
 - feature importance attribution using captum, for use with a FC model [https://captum.ai/]
+
+Examples of heatmap of attentions scores from the transformer model manager:
+![image](https://github.com/user-attachments/assets/d871dce9-e5bb-4a40-8149-4cc1284519b5)
+
 
 ## Results
 
@@ -75,4 +79,5 @@ Functions include:
 
 The RL-trained manager with the transformer architecture, manages to produce synergy, and also outperfrom the "expert" manager. 
 The oracle has significantly higher performance than other manager types, indicating that there is still ample headroom for additional synergy.
-##
+
+
