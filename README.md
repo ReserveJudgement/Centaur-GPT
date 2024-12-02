@@ -1,4 +1,6 @@
 # Centaur-GPT
+![image](https://github.com/user-attachments/assets/f7db2678-414d-463a-9760-24303411c4ad)
+
 ## Introduction
 This repository contains code, models and data for the paper "Modeling the Centaur: Human-Machine Synergy in Sequential Decision Making".
 It is used to model a "team" of chess engines, consising of at least two base players, and a "manager" that decides at each position which player makes the move on behalf of the team. 
@@ -22,24 +24,29 @@ Training data is generated from games between chess engines using the python che
 Start states for the games can be found in the "opening-positions" folder.
 The code for generating games can be found in the "code" folder: Generate-Games.py.
 Running games requires specifying team members and adversary, as stored in a global dictionary with paths to the respective engines.
-It also requires creating a "manager" object which scores the recommendations and decides on a move for the team at each disagreement.
-Different kinds of games are generated with different classes of manager:
-- The "CentaurModel" class loads a torch model, either transformer or fully-connected, and uses it to make decisions at each position. This is good for evaluation of a model.
+It also requires creating a "manager" object (see below) which scores the recommendations and decides on a move for the team at each disagreement.
+Output is a csv file. Positions are recorded as FEN strings, and evaluations of the team players used for each position are scored as 0 for estimated loss if that player is chosen, 0.5 for estimated draw and 1 for estimated win. While this is sufficient for the training objective, additional data is also stored in the file (ply count, recommended moves etc.). 
+
+
+## Manager types
+Classes of manager for the virtual centaur team:
+- The "CentaurModel" class loads a torch model, either transformer or fully-connected, and uses it to make decisions at each position.
 - The "PolicyIterate" and "FCIterate" classes also load a torch model (transformer and fully-connected respectively), but they score positions by playing out each recommendation of the base players and then rolling out the rest of the game using the model. These classes are good for reinforcement learning using the policy iteration algorithm.
 - The "Oracle" class scores the recommendations without using a model, by rolling out games from recommendations, using a specified base player alone for continuation.
+  This is for comparison to an upper baseline, since this type of rollout at each move is too computationally intensive for actual play.
 - The "RandomChoice" class runs a random mixture policy between the base players. By default p=0.5, but it can be adjusted. Setting p=0 or p=1 can be used to run the baselines of each team member playing alone.
 - The "Expert" class loads an additional chess engine, which scores the recommendations of the team members.
 
 
-Output is a csv file. Positions are recorded as FEN strings, and evaluations of the team players used for each position are scored as 0 for loss, 0.5 for draw and 1 for win. 
-While this is sufficient for the training objective, additional data is also stored in the file (ply count, recommended moves etc.). 
-
-
 ## Training
 Given a file of training data, a transformer model can be trained using the CentaurGPT-trainer.py file in the "code" folder.
+The board position is encoded using 64 tokens to represent the status of each square on the board, and an additional set of tokens to represent castling rights, whether there is check and a classification token:
+
+![image](https://github.com/user-attachments/assets/e0064286-9f08-4106-a462-96b5e0cf72dc)
+
 Training data is converted into a torch dataset using RelAdvantage class.
-The trainer stores the trained transformer encoder and the classifier models separately, one with the "Encoder" suffix and the other with the "Clf" suffix.
-When generating games using the models, both need to be used.
+The trainer stores the trained transformer encoder and the final classifier layer as separate models, one with the "Encoder" suffix and the other with the "Clf" suffix.
+When generating games using the trained model, both need to be used.
 Trained models for the symmetric team can be found in the "models" folder.
 
 
@@ -61,3 +68,11 @@ Functions include:
 - heatmap visualization of attentions over board
 - calculate non-parametric Aw effect size
 - feature importance attribution using captum, for use with a FC model [https://captum.ai/]
+
+## Results
+
+![image](https://github.com/user-attachments/assets/545f41b5-7c1e-4d03-a4b9-ead86f3daef9)
+
+The RL-trained manager with the transformer architecture, manages to produce synergy, and also outperfrom the "expert" manager. 
+The oracle has significantly higher performance than other manager types, indicating that there is still ample headroom for additional synergy.
+##
