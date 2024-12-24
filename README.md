@@ -53,6 +53,7 @@ Trained models for the symmetric team can be found in the "models" folder.
 ## Hand-Crafted Features
 To extract handcrafted features of a chess board position, the Features.py file can be used.
 Extracted features are saved in a csv file, with the positions as FEN strings, a column for each feature and the evaluations preserved in the last column.
+This can be used to train a fully connected network using a small number of features.
 
 
 ## Evaluation
