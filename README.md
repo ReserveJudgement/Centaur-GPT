@@ -67,7 +67,6 @@ Functions include:
 - querying the attention scores for the variables of interest (pieces vs empty squares, attacked pieces vs not-attacked, move comparisons)
 - heatmap visualization of attention scores in the transformer model over board positions
 - calculate non-parametric Aw effect size
-- feature importance attribution using captum, for use with a FC model [https://captum.ai/]
 
 Examples of heatmap of attentions scores from the transformer model manager:
 ![image](https://github.com/user-attachments/assets/d871dce9-e5bb-4a40-8149-4cc1284519b5)
